@@ -52,9 +52,10 @@ class KouqInputPort {
             this->outputPortDist = uniform_int_distribution <int> (0,switchPortCount-1);
         }
         void generatePacket(){
+            int randOutputPort = outputPortDist(outputPortRandGen);
             if (packetDist(packetRandGen)<packetGenProb){
                 packet.first = curTimeSlot;
-                packet.second = outputPortDist(outputPortRandGen);
+                packet.second = randOutputPort;
             }
             else{
                 packet.second = -1;
@@ -63,6 +64,42 @@ class KouqInputPort {
         }
     private:
         int curTimeSlot = 0;
+        float packetGenProb;
+        int switchPortCount;
+        default_random_engine packetRandGen;
+        default_random_engine outputPortRandGen;
+        uniform_real_distribution <float> packetDist;
+        uniform_int_distribution <int> outputPortDist;
+};
+
+class IslipInputPort {
+    public:
+        vector<queue <int>> packets;
+        IslipInputPort(int switchPortCount, int bufferSize, float packetGenProb){
+            this->bufferSize = bufferSize;
+            this->packetGenProb = packetGenProb;
+            this->switchPortCount = switchPortCount;
+            unsigned seed = chrono::system_clock::now().time_since_epoch().count();
+            this->packetRandGen = default_random_engine(seed);
+            seed = chrono::system_clock::now().time_since_epoch().count();
+            this->outputPortRandGen = default_random_engine(seed);
+            this->packetDist = uniform_real_distribution <float> (0.0, 1.0);
+            this->outputPortDist = uniform_int_distribution <int> (0,switchPortCount-1);
+            queue<int> inQ;
+            this->packets = vector<queue <int>> (switchPortCount, inQ);
+        }
+        void generatePacket(){
+            if (packetDist(packetRandGen)<packetGenProb){
+                int randOutputPort = outputPortDist(outputPortRandGen);
+                if (packets[randOutputPort].size()<bufferSize){
+                    packets[randOutputPort].push(curTimeSlot);
+                }
+            }
+            curTimeSlot++;
+        }
+    private:
+        int curTimeSlot = 0;
+        int bufferSize;
         float packetGenProb;
         int switchPortCount;
         default_random_engine packetRandGen;
@@ -87,7 +124,7 @@ void scheduleInq (vector<InqInputPort> &inputPorts, vector<int> &delays, int cur
     }
 }
 
-void scheduleKouq (vector<KouqInputPort> &inputPorts, vector<queue<int>> &outputQs, int &kouqDrops, int switchPortCount, int bufferSize, int knockout){
+void scheduleKouq (vector<KouqInputPort> &inputPorts, vector<queue<int>> &outputQs, int &kouqDrops, int switchPortCount, int bufferSize, float knockout){
     vector<vector<int>> outputPackets (switchPortCount, vector<int>(0));
     for (int i=0; i<switchPortCount; i++){
         if (inputPorts[i].packet.second!=-1){
@@ -97,7 +134,6 @@ void scheduleKouq (vector<KouqInputPort> &inputPorts, vector<queue<int>> &output
     for (int i=0; i<switchPortCount; i++){
         if (outputPackets[i].size()>knockout){
             kouqDrops++;
-            random_shuffle(outputPackets[i].begin(), outputPackets[i].end());
             for (int j=0; j<knockout; j++){
                 if (outputQs[i].size()>=bufferSize){
                     break;
@@ -106,7 +142,6 @@ void scheduleKouq (vector<KouqInputPort> &inputPorts, vector<queue<int>> &output
             }
         }
         else{
-            random_shuffle(outputPackets[i].begin(), outputPackets[i].end());
             for (int j=0; j<outputPackets[i].size(); j++){
                 if (outputQs[i].size()>=bufferSize){
                     break;
@@ -126,6 +161,64 @@ void transmitKouq(vector<queue<int>> &outputQs, int curTimeSlot, vector<int> &de
     }
 }
 
+void scheduleIslip(vector<IslipInputPort> &inputPorts, vector<vector<bool>> &requests, vector<int> &delays, int curTimeSlot, int switchPortCount){
+    bool requestsEmpty = true;
+    for (int i=0; i<switchPortCount; i++){
+        for (int j=0; j<switchPortCount; j++){
+            if (requests[i][j]!=false){
+                requestsEmpty = false;
+            }
+        }
+    }
+    if (requestsEmpty){
+        for (int i=0; i<switchPortCount; i++){
+            for (int j=0; j<switchPortCount; j++){
+                if (!inputPorts[j].packets[i].empty()){
+                    requests[i][j]=true;
+                }
+            }
+        }
+    }
+    vector<bool> occupiedInputPorts(switchPortCount, false);
+    vector<bool> occupiedOutputPorts(switchPortCount, false);
+    vector<int> accepted(switchPortCount, -1);
+    for (int k=0; k<switchPortCount; k++){
+        bool serving = false;
+        for (int i=0; i<switchPortCount; i++){
+            for (int j=0; j<switchPortCount; j++){
+                if ((requests[i][j]) && (!occupiedInputPorts[j]) && (!occupiedOutputPorts[i])){
+                    accepted[i]=j;
+                    occupiedInputPorts[j]=true;
+                    occupiedOutputPorts[i]=true;
+                    serving = true;
+                }
+            }
+        }
+        if (!serving){
+            break;
+        }
+    }
+    // for (int i=0; i<switchPortCount; i++){
+    //     cout << i << ": ";
+    //     for (int j=0; j<switchPortCount; j++){
+    //         if (requests[i][j]){
+    //             cout << j << " ";
+    //         }
+    //     }
+    //     cout << endl;
+    // }
+    for (int i=0; i<switchPortCount; i++){
+        if (accepted[i] != -1){
+            delays.push_back(curTimeSlot - inputPorts[accepted[i]].packets[i].front());
+            inputPorts[accepted[i]].packets[i].pop();
+            requests[i][accepted[i]]=false;
+            // cout << i << " " << accepted[i] << endl;
+        }
+    }
+
+    
+}
+
 int main(int argc, char **argv){
     int switchPortCount = 8;
     int bufferSize = 4;
@@ -138,6 +231,7 @@ int main(int argc, char **argv){
         2 - ISLIP
     */
     float knockout = 0.6*switchPortCount;
+    bool knockoutSet = false;
     int maxTimeSlots = 10000;
     char outputFile[100] = "routing-out.txt";
     // for (int i=0; i<argc; i++){
@@ -151,7 +245,9 @@ int main(int argc, char **argv){
                 cout << "Wrong input given (1)" << endl;
                 return 1;
             }
-            knockout = 0.6*switchPortCount;
+            if (!knockoutSet){
+                knockout = 0.6*switchPortCount;
+            }
         }
         else if (option == "-B"){
             if (sscanf(argv[i+1],"%d",&bufferSize) != 1){
@@ -192,6 +288,7 @@ int main(int argc, char **argv){
                 cout << "Wrong input given (5)" << endl;
                 return 1;
             }
+            knockoutSet = true;
         }
         else if (option == "-out"){
             if (sscanf(argv[i+1],"%s",&outputFile) != 1){
@@ -213,13 +310,13 @@ int main(int argc, char **argv){
             return 1;
         }
     }
-    // cout << "switchPortCount : " << switchPortCount << endl;
-    // cout << "bufferSize : " << bufferSize << endl;
-    // cout << "packetGenProb : " << packetGenProb << endl;
-    // cout << "queueType : " << queueType << endl;
-    // cout << "knockout : " << knockout << endl;
-    // cout << "maxTimeSlots : " << maxTimeSlots << endl;
-    // cout << "outputFile : " << outputFile << endl;
+    cout << "switchPortCount : " << switchPortCount << endl;
+    cout << "bufferSize : " << bufferSize << endl;
+    cout << "packetGenProb : " << packetGenProb << endl;
+    cout << "queueType : " << queueType << endl;
+    cout << "knockout : " << knockout << endl;
+    cout << "maxTimeSlots : " << maxTimeSlots << endl;
+    cout << "outputFile : " << outputFile << endl;
     if (queueType == 0){
         vector <InqInputPort> inputPorts (switchPortCount, InqInputPort (switchPortCount, bufferSize, packetGenProb));
         vector <int> delays;
@@ -273,6 +370,31 @@ int main(int argc, char **argv){
         cout << "SD Delay: " << sdDelay << endl;
         cout << "Link Utilization: " << linkUtil <<endl;
         cout << "KOUQ Drop Probability: " << kouqDropProb <<endl;
+    }
+    else if (queueType == 2){
+        vector <IslipInputPort> inputPorts(switchPortCount, IslipInputPort(switchPortCount, bufferSize, packetGenProb));
+        vector<vector<bool>> requests(switchPortCount, vector<bool>(switchPortCount, false));
+        vector<int> delays;
+        for (int i=0; i<maxTimeSlots; i++){
+            for (int j=0; j<switchPortCount; j++){
+                inputPorts[j].generatePacket();
+            }
+            scheduleIslip(inputPorts, requests, delays, i, switchPortCount);
+        }
+        float delaySum, delaySqSum;
+        for (int i=0; i<delays.size(); i++){
+            delaySum += delays[i];
+        }
+        float averageDelay = delaySum/delays.size();
+        for (int i=0; i<delays.size(); i++){
+            delaySqSum += (delays[i]-averageDelay)*(delays[i]-averageDelay);
+        }
+        float sdDelay = delaySqSum/delays.size();
+        sdDelay = sqrt(sdDelay);
+        float linkUtil = (float)delays.size()/(maxTimeSlots*switchPortCount);
+        cout << "Avg. Delay: " << averageDelay << endl;
+        cout << "SD Delay: " << sdDelay << endl;
+        cout << "Link Utilization: " << linkUtil <<endl;
     }
 
     return 0;
