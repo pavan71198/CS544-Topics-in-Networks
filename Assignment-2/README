@@ -1,0 +1,29 @@
+Compile the code with g++:
+g++ -o routing routing.cpp
+
+Run the code with:
+./routing -N switchportcount -B buffersize -p packetgenprob -queue INQ|KOUQ|ISLIP -K knockout -out outputfile -T maxtimeslots
+
+all the command line arguments are optional
+
+default values are:
+
+switchportcount : 8
+buffersize : 4
+packetgenprob : 0.5
+queuetype : inq
+knockout : 4.8
+maxtimeslots : 10000
+outputfile : routing-out.txt
+
+Output File Data Format:
+
+Switch port count
+Packet genration probability
+Queue type (INQ | KOUQ | ISLIP)
+Avg. Delay
+Standard deviation in Delay
+Avg. Link Utilization
+KOUQ Drop Probability (if Queue type is KOUQ)
+
+all these values are present in each line of output seperated by tabs
