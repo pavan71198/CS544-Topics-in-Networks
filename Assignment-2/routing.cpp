@@ -5,7 +5,7 @@ using namespace std;
 
 class InqInputPort {
     public:
-        queue <pair <int, int>> packets;
+        queue <pair <int, int>> packets; //queue for storing packets to be processed
         InqInputPort(int switchPortCount, int bufferSize, float packetGenProb){
             this->bufferSize = bufferSize;
             this->packetGenProb = packetGenProb;
@@ -18,11 +18,17 @@ class InqInputPort {
             this->outputPortDist = uniform_int_distribution <int> (0,switchPortCount-1);
         }
         void generatePacket(){
+            /*
+            *    generating packets based on packet genration probability
+            */
             if (packetDist(packetRandGen)<packetGenProb){
+                /*
+                *   adding packets to the input buffer if buffer isn't full
+                */
                 if (packets.size()<bufferSize){
                     pair <int,int> newPacket;
                     newPacket.first = curTimeSlot;
-                    newPacket.second = outputPortDist(outputPortRandGen);
+                    newPacket.second = outputPortDist(outputPortRandGen); //selecting a random output port with uniform probability
                     packets.push(newPacket);
                 }
             }
@@ -54,9 +60,12 @@ class KouqInputPort {
         }
         void generatePacket(){
             int randOutputPort = outputPortDist(outputPortRandGen);
+            /*
+            *    generating packets based on packet genration probability
+            */
             if (packetDist(packetRandGen)<packetGenProb){
                 packet.first = curTimeSlot;
-                packet.second = randOutputPort;
+                packet.second = randOutputPort; //selecting a random output port with uniform probability
             }
             else{
                 packet.second = -1;
@@ -87,11 +96,17 @@ class IslipInputPort {
             this->packetDist = uniform_real_distribution <float> (0.0, 1.0);
             this->outputPortDist = uniform_int_distribution <int> (0,switchPortCount-1);
             queue<int> inQ;
-            this->packets = vector<queue <int>> (switchPortCount, inQ);
+            this->packets = vector<queue <int>> (switchPortCount, inQ); //N queues, 1 for each of the output port
         }
         void generatePacket(){
+            /*
+            *    generating packets based on packet genration probability
+            */
             if (packetDist(packetRandGen)<packetGenProb){
-                int randOutputPort = outputPortDist(outputPortRandGen);
+                int randOutputPort = outputPortDist(outputPortRandGen); //selecting a random output port with uniform probability
+                /*
+                *   adding packets to the input buffer if buffer isn't full
+                */
                 if (packets[randOutputPort].size()<bufferSize){
                     packets[randOutputPort].push(curTimeSlot);
                 }
@@ -119,7 +134,13 @@ void scheduleInq (vector<InqInputPort> &inputPorts, vector<int> &delays, int cur
     for (int i=0; i<switchPortCount; i++){
         if (outputPackets[i].size()>=1){
             int randPacketIdx = rand()%outputPackets[i].size();
+            /*
+            *   selecting a random packet if there are conflicts
+            */
             delays.push_back(curTimeSlot-inputPorts[outputPackets[i][randPacketIdx]].packets.front().first);
+            /*
+            *   transmitting a packet just after getting it out of input queue
+            */
             inputPorts[outputPackets[i][randPacketIdx]].packets.pop();
         }
     }
@@ -133,6 +154,10 @@ void scheduleKouq (vector<KouqInputPort> &inputPorts, vector<queue<int>> &output
         }
     }
     for (int i=0; i<switchPortCount; i++){
+        /*
+        *   selecting K packets out of total corresponding to the output port and sending them to 
+        *   output queue and dropping the rest if no. of packets > K
+        */
         if (outputPackets[i].size()>knockout){
             kouqDrops++;
             for (int j=0; j<knockout; j++){
@@ -142,6 +167,9 @@ void scheduleKouq (vector<KouqInputPort> &inputPorts, vector<queue<int>> &output
                 outputQs[i].push(outputPackets[i][j]);
             }
         }
+        /*
+        *   sending all the packets corresponding to the output port to the output queue if no. of packets <= K
+        */
         else{
             for (int j=0; j<outputPackets[i].size(); j++){
                 if (outputQs[i].size()>=bufferSize){
@@ -156,6 +184,9 @@ void scheduleKouq (vector<KouqInputPort> &inputPorts, vector<queue<int>> &output
 void transmitKouq(vector<queue<int>> &outputQs, vector<int> &delays, int curTimeSlot, int switchPortCount){
     for (int i=0; i<switchPortCount; i++){
         if (!outputQs[i].empty()){
+            /*
+            *   transmitting 1 packet from each output's queue in a time slot.
+            */
             delays.push_back(curTimeSlot-outputQs[i].front());
             outputQs[i].pop();
         }
@@ -164,6 +195,9 @@ void transmitKouq(vector<queue<int>> &outputQs, vector<int> &delays, int curTime
 
 void scheduleIslip(vector<IslipInputPort> &inputPorts, vector<vector<bool>> &requests, vector<int> &delays, int curTimeSlot, int switchPortCount){
     bool requestsEmpty = true;
+    /*
+    *   checking for pre-existing requests to output ports from each input port
+    */
     for (int i=0; i<switchPortCount; i++){
         for (int j=0; j<switchPortCount; j++){
             if (requests[i][j]!=false){
@@ -171,6 +205,9 @@ void scheduleIslip(vector<IslipInputPort> &inputPorts, vector<vector<bool>> &req
             }
         }
     }
+    /*
+    *   if there are no requests, getting requests to each output ports from each input port
+    */
     if (requestsEmpty){
         for (int i=0; i<switchPortCount; i++){
             for (int j=0; j<switchPortCount; j++){
@@ -180,6 +217,9 @@ void scheduleIslip(vector<IslipInputPort> &inputPorts, vector<vector<bool>> &req
             }
         }
     }
+    /*
+    *   running one round of ISLIP on the requests
+    */
     vector<bool> occupiedInputPorts(switchPortCount, false);
     vector<bool> occupiedOutputPorts(switchPortCount, false);
     vector<int> accepted(switchPortCount, -1);
@@ -187,16 +227,20 @@ void scheduleIslip(vector<IslipInputPort> &inputPorts, vector<vector<bool>> &req
         bool serving = false;
         for (int i=0; i<switchPortCount; i++){
             for (int j=0; j<switchPortCount; j++){
+                /*
+                *   granting phase of checking whether the input and output ports are free and
+                *   accepting phase of accepting the top request with 
+                */
                 if ((requests[i][j]) && (!occupiedInputPorts[j]) && (!occupiedOutputPorts[i])){
                     accepted[i]=j;
                     occupiedInputPorts[j]=true;
                     occupiedOutputPorts[i]=true;
-                    serving = true;
+                    serving = true; // marking whether a request is served in the round if not then there are no requests
                 }
             }
         }
         if (!serving){
-            break;
+            break; // if no request is served end the ISLIP algo rounds
         }
     }
     // for (int i=0; i<switchPortCount; i++){
@@ -210,6 +254,9 @@ void scheduleIslip(vector<IslipInputPort> &inputPorts, vector<vector<bool>> &req
     // }
     for (int i=0; i<switchPortCount; i++){
         if (accepted[i] != -1){
+            /*
+            *   serving the accepted requests in this round of ISLIP
+            */
             delays.push_back(curTimeSlot - inputPorts[accepted[i]].packets[i].front());
             inputPorts[accepted[i]].packets[i].pop();
             requests[i][accepted[i]]=false;
@@ -240,6 +287,9 @@ int main(int argc, char **argv){
     // }
     for (int i=1; i<argc-1; i+=2){
         string option(argv[i]);
+        /*
+        * reading various parameters from command line arguments
+        */
         if (option == "-N"){
             if (sscanf(argv[i+1],"%d",&switchPortCount) != 1){
                 cout << argv[i] << " " << argv[i+1] << endl;
@@ -247,7 +297,7 @@ int main(int argc, char **argv){
                 return 1;
             }
             if (!knockoutSet){
-                knockout = 0.6*switchPortCount;
+                knockout = 0.6*switchPortCount; //changing K with respect to N
             }
         }
         else if (option == "-B"){
@@ -323,12 +373,22 @@ int main(int argc, char **argv){
     if (queueType == 0){
         vector <InqInputPort> inputPorts (switchPortCount, InqInputPort (switchPortCount, bufferSize, packetGenProb));
         vector <int> delays;
+        
         for (int i=0; i<maxTimeSlots; i++){
+            /*
+            *   generating packets at each input port in a time slot
+            */
             for (int j=0; j<switchPortCount; j++){
                 inputPorts[j].generatePacket();
             }
+            /*
+            *   scheduling and transmitting packets in a time slot
+            */
             scheduleInq(inputPorts, delays, i, switchPortCount);
         }
+        /* 
+        *   Avg. Delay, Standard Deviation of Delay and Link Utilization calculations
+        */
         float delaySum = 0, delaySqSum = 0;
         for (int i=0; i<delays.size(); i++){
             delaySum += delays[i];
@@ -343,6 +403,9 @@ int main(int argc, char **argv){
         cout << "Avg. Delay: " << averageDelay << endl;
         cout << "SD Delay: " << sdDelay << endl;
         cout << "Link Utilization: " << linkUtil <<endl;
+        /*
+        * output results to file
+        */
         outfile << switchPortCount << "\t";
         outfile << packetGenProb << "\t";
         outfile << "INQ" << "\t";
@@ -354,15 +417,27 @@ int main(int argc, char **argv){
         vector <KouqInputPort> inputPorts (switchPortCount, KouqInputPort (switchPortCount, packetGenProb));
         vector <int> delays;
         queue<int> outQ;
+        /*
+        *   creating output queues for each output port
+        */
         vector <queue <int>> outputQs(switchPortCount, outQ);
         int kouqDrops=0;
         for (int i=0; i<maxTimeSlots; i++){
+            /*
+            *   generating packets at each input port in a time slot
+            */
             for (int j=0; j<switchPortCount; j++){
                 inputPorts[j].generatePacket();
             }
+            /*
+            *   scheduling and transmitting packets in a time slot
+            */
             scheduleKouq(inputPorts, outputQs, kouqDrops, switchPortCount, bufferSize, knockout);
             transmitKouq(outputQs, delays, i, switchPortCount);
         }
+        /* 
+        *   Avg. Delay, Standard Deviation of Delay, KOUQ Drop Probability and Link Utilization calculations
+        */
         float delaySum = 0, delaySqSum = 0;
         for (int i=0; i<delays.size(); i++){
             delaySum += delays[i];
@@ -379,6 +454,9 @@ int main(int argc, char **argv){
         cout << "SD Delay: " << sdDelay << endl;
         cout << "Link Utilization: " << linkUtil <<endl;
         cout << "KOUQ Drop Probability: " << kouqDropProb <<endl;
+        /*
+        * output results to file
+        */
         outfile << switchPortCount << "\t";
         outfile << packetGenProb << "\t";
         outfile << "KOUQ" << "\t";
@@ -392,11 +470,20 @@ int main(int argc, char **argv){
         vector<vector<bool>> requests(switchPortCount, vector<bool>(switchPortCount, false));
         vector<int> delays;
         for (int i=0; i<maxTimeSlots; i++){
+            /*
+            *   generating packets at each input port in a time slot
+            */
             for (int j=0; j<switchPortCount; j++){
                 inputPorts[j].generatePacket();
             }
+            /*
+            *   scheduling and transmitting packets in a time slot
+            */
             scheduleIslip(inputPorts, requests, delays, i, switchPortCount);
         }
+        /* 
+        *   Avg. Delay, Standard Deviation of Delay and Link Utilization calculations
+        */
         float delaySum = 0, delaySqSum = 0;
         for (int i=0; i<delays.size(); i++){
             delaySum += delays[i];
@@ -408,6 +495,9 @@ int main(int argc, char **argv){
         float sdDelay = delaySqSum/delays.size();
         sdDelay = sqrt(sdDelay);
         float linkUtil = (float)delays.size()/(maxTimeSlots*switchPortCount);
+        /*
+        * output results to file
+        */
         cout << "Avg. Delay: " << averageDelay << endl;
         cout << "SD Delay: " << sdDelay << endl;
         cout << "Link Utilization: " << linkUtil <<endl;
