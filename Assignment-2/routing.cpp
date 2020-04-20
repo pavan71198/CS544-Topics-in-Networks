@@ -1,4 +1,5 @@
 #include <bits/stdc++.h>
+#include <fstream>
 
 using namespace std;
 
@@ -152,7 +153,7 @@ void scheduleKouq (vector<KouqInputPort> &inputPorts, vector<queue<int>> &output
     }
 }
 
-void transmitKouq(vector<queue<int>> &outputQs, int curTimeSlot, vector<int> &delays, int switchPortCount){
+void transmitKouq(vector<queue<int>> &outputQs, vector<int> &delays, int curTimeSlot, int switchPortCount){
     for (int i=0; i<switchPortCount; i++){
         if (!outputQs[i].empty()){
             delays.push_back(curTimeSlot-outputQs[i].front());
@@ -317,6 +318,8 @@ int main(int argc, char **argv){
     cout << "knockout : " << knockout << endl;
     cout << "maxTimeSlots : " << maxTimeSlots << endl;
     cout << "outputFile : " << outputFile << endl;
+    ofstream outfile;
+    outfile.open(outputFile, ios_base::app);
     if (queueType == 0){
         vector <InqInputPort> inputPorts (switchPortCount, InqInputPort (switchPortCount, bufferSize, packetGenProb));
         vector <int> delays;
@@ -326,7 +329,7 @@ int main(int argc, char **argv){
             }
             scheduleInq(inputPorts, delays, i, switchPortCount);
         }
-        float delaySum, delaySqSum;
+        float delaySum = 0, delaySqSum = 0;
         for (int i=0; i<delays.size(); i++){
             delaySum += delays[i];
         }
@@ -340,6 +343,12 @@ int main(int argc, char **argv){
         cout << "Avg. Delay: " << averageDelay << endl;
         cout << "SD Delay: " << sdDelay << endl;
         cout << "Link Utilization: " << linkUtil <<endl;
+        outfile << switchPortCount << "\t";
+        outfile << packetGenProb << "\t";
+        outfile << "INQ" << "\t";
+        outfile << averageDelay << "\t";
+        outfile << sdDelay << "\t";
+        outfile << linkUtil << endl;
     }
     else if (queueType == 1){
         vector <KouqInputPort> inputPorts (switchPortCount, KouqInputPort (switchPortCount, packetGenProb));
@@ -352,9 +361,9 @@ int main(int argc, char **argv){
                 inputPorts[j].generatePacket();
             }
             scheduleKouq(inputPorts, outputQs, kouqDrops, switchPortCount, bufferSize, knockout);
-            transmitKouq(outputQs, i, delays, switchPortCount);
+            transmitKouq(outputQs, delays, i, switchPortCount);
         }
-        float delaySum, delaySqSum;
+        float delaySum = 0, delaySqSum = 0;
         for (int i=0; i<delays.size(); i++){
             delaySum += delays[i];
         }
@@ -370,6 +379,13 @@ int main(int argc, char **argv){
         cout << "SD Delay: " << sdDelay << endl;
         cout << "Link Utilization: " << linkUtil <<endl;
         cout << "KOUQ Drop Probability: " << kouqDropProb <<endl;
+        outfile << switchPortCount << "\t";
+        outfile << packetGenProb << "\t";
+        outfile << "KOUQ" << "\t";
+        outfile << averageDelay << "\t";
+        outfile << sdDelay << "\t";
+        outfile << linkUtil << "\t";
+        outfile << kouqDropProb << endl;
     }
     else if (queueType == 2){
         vector <IslipInputPort> inputPorts(switchPortCount, IslipInputPort(switchPortCount, bufferSize, packetGenProb));
@@ -381,7 +397,7 @@ int main(int argc, char **argv){
             }
             scheduleIslip(inputPorts, requests, delays, i, switchPortCount);
         }
-        float delaySum, delaySqSum;
+        float delaySum = 0, delaySqSum = 0;
         for (int i=0; i<delays.size(); i++){
             delaySum += delays[i];
         }
@@ -395,7 +411,14 @@ int main(int argc, char **argv){
         cout << "Avg. Delay: " << averageDelay << endl;
         cout << "SD Delay: " << sdDelay << endl;
         cout << "Link Utilization: " << linkUtil <<endl;
+        outfile << switchPortCount << "\t";
+        outfile << packetGenProb << "\t";
+        outfile << "ISLIP" << "\t";
+        outfile << averageDelay << "\t";
+        outfile << sdDelay << "\t";
+        outfile << linkUtil << endl;
     }
+    outfile.close();
 
     return 0;
 }
