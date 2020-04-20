@@ -18,10 +18,12 @@ class InqInputPort {
         }
         void generatePacket(){
             if (packetDist(packetRandGen)<packetGenProb){
-                pair <int,int> newPacket;
-                newPacket.first = curTimeSlot;
-                newPacket.second = outputPortDist(outputPortRandGen);
-                packets.push(newPacket);
+                if (packets.size()<bufferSize){
+                    pair <int,int> newPacket;
+                    newPacket.first = curTimeSlot;
+                    newPacket.second = outputPortDist(outputPortRandGen);
+                    packets.push(newPacket);
+                }
             }
             curTimeSlot++;
         }
@@ -225,17 +227,18 @@ int main(int argc, char **argv){
             for (int j=0; j<switchPortCount; j++){
                 inputPorts[j].generatePacket();
             }
-            scheduleInq(inputPorts, delays, i+1, switchPortCount);
+            scheduleInq(inputPorts, delays, i, switchPortCount);
         }
         float delaySum, delaySqSum;
         for (int i=0; i<delays.size(); i++){
             delaySum += delays[i];
         }
-        float averageDelay = (float)delaySum/delays.size();
+        float averageDelay = delaySum/delays.size();
         for (int i=0; i<delays.size(); i++){
             delaySqSum += (delays[i]-averageDelay)*(delays[i]-averageDelay);
         }
         float sdDelay = delaySqSum/delays.size();
+        sdDelay = sqrt(sdDelay);
         float linkUtil = (float)delays.size()/(maxTimeSlots*switchPortCount);
         cout << "Avg. Delay: " << averageDelay << endl;
         cout << "SD Delay: " << sdDelay << endl;
@@ -252,17 +255,18 @@ int main(int argc, char **argv){
                 inputPorts[j].generatePacket();
             }
             scheduleKouq(inputPorts, outputQs, kouqDrops, switchPortCount, bufferSize, knockout);
-            transmitKouq(outputQs, i+1, delays, switchPortCount);
+            transmitKouq(outputQs, i, delays, switchPortCount);
         }
         float delaySum, delaySqSum;
         for (int i=0; i<delays.size(); i++){
             delaySum += delays[i];
         }
-        float averageDelay = (float)delaySum/delays.size();
+        float averageDelay = delaySum/delays.size();
         for (int i=0; i<delays.size(); i++){
             delaySqSum += (delays[i]-averageDelay)*(delays[i]-averageDelay);
         }
         float sdDelay = delaySqSum/delays.size();
+        sdDelay = sqrt(sdDelay);
         float linkUtil = (float)delays.size()/(maxTimeSlots*switchPortCount);
         float kouqDropProb = (float)kouqDrops/(maxTimeSlots*switchPortCount);
         cout << "Avg. Delay: " << averageDelay << endl;
